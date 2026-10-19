@@ -9,15 +9,16 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.chat.model.ChatModel;
 
 import com.aegorov.knowledgeplatform.ragservice.application.retrieval.RetrievedChunk;
 
 import reactor.core.publisher.Flux;
 
 /**
- * Real streaming {@link ChatLlm} backed by OpenAI (platform.openai.com) via
- * Spring AI, active when {@code knowledge-platform.llm.provider=openai}.
+ * Real streaming {@link ChatLlm} backed by a Spring AI {@link ChatModel} (OpenAI
+ * on platform.openai.com or a local Ollama), active when
+ * {@code knowledge-platform.llm.provider} is {@code openai} or {@code ollama}.
  * <p>
  * The retrieved chunks are folded into the system message (each labelled with its
  * {@code documentId#chunkIndex} so the model can cite sources), prior turns are
@@ -26,14 +27,14 @@ import reactor.core.publisher.Flux;
  * through the Flux and are turned into a user-safe {@code ERROR} chunk by
  * {@code RagChatService}; they never become an HTTP error mid-stream.
  * <p>
- * The API key is supplied via {@code spring.ai.openai.api-key} (empty by default);
- * no key is ever committed.
+ * The OpenAI API key is supplied via {@code spring.ai.openai.api-key} (empty by
+ * default); no key is ever committed. Ollama needs no key.
  */
-public class OpenAiChatLlm implements ChatLlm {
+public class SpringAiChatLlm implements ChatLlm {
 
     private final ChatClient chatClient;
 
-    public OpenAiChatLlm(OpenAiChatModel chatModel) {
+    public SpringAiChatLlm(ChatModel chatModel) {
         this.chatClient = ChatClient.builder(chatModel).build();
     }
 

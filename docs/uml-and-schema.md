@@ -253,10 +253,10 @@ classDiagram
       +Flux~String~ stream(LlmContext ctx)
     }
     class StubChatLlm
-    class OpenAiChatLlm
+    class SpringAiChatLlm
     class AzureOpenAiChatLlm
     ChatLlm <|.. StubChatLlm
-    ChatLlm <|.. OpenAiChatLlm
+    ChatLlm <|.. SpringAiChatLlm
     ChatLlm <|.. AzureOpenAiChatLlm
 
     class ChunkRetriever {

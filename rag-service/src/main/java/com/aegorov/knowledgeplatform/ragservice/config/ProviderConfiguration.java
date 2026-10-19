@@ -1,5 +1,8 @@
 package com.aegorov.knowledgeplatform.ragservice.config;
 
+import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.ai.ollama.OllamaEmbeddingModel;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -12,7 +15,7 @@ import com.aegorov.knowledgeplatform.ragservice.application.embedding.SpringAiEm
 import com.aegorov.knowledgeplatform.ragservice.application.embedding.StubEmbeddingModel;
 import com.aegorov.knowledgeplatform.ragservice.application.llm.AzureOpenAiChatLlm;
 import com.aegorov.knowledgeplatform.ragservice.application.llm.ChatLlm;
-import com.aegorov.knowledgeplatform.ragservice.application.llm.OpenAiChatLlm;
+import com.aegorov.knowledgeplatform.ragservice.application.llm.SpringAiChatLlm;
 import com.aegorov.knowledgeplatform.ragservice.application.llm.StubChatLlm;
 
 /**
@@ -21,7 +24,8 @@ import com.aegorov.knowledgeplatform.ragservice.application.llm.StubChatLlm;
  * {@code knowledge-platform.embedding.provider}. Both default to offline stubs so
  * the whole demo runs with no API keys. {@code openai} wires real
  * platform.openai.com models through Spring AI (key from
- * {@code spring.ai.openai.api-key}, empty by default). The {@code azure} beans are
+ * {@code spring.ai.openai.api-key}, empty by default); {@code ollama} wires a local
+ * Ollama instance ({@code spring.ai.ollama.*}). The {@code azure} beans are
  * inert placeholders (see the model classes). Nothing is committed and nothing
  * calls out unless a provider is explicitly set to a real value.
  */
@@ -39,7 +43,14 @@ public class ProviderConfiguration {
     @ConditionalOnProperty(prefix = "knowledge-platform.embedding", name = "provider",
             havingValue = "openai")
     EmbeddingModel openAiEmbeddingSeam(OpenAiEmbeddingModel delegate) {
-        return new SpringAiEmbeddingModelAdapter((EmbeddingModel) delegate);
+        return new SpringAiEmbeddingModelAdapter(delegate);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "knowledge-platform.embedding", name = "provider",
+            havingValue = "ollama")
+    EmbeddingModel ollamaEmbeddingSeam(OllamaEmbeddingModel delegate) {
+        return new SpringAiEmbeddingModelAdapter(delegate);
     }
 
     @Bean
@@ -62,8 +73,15 @@ public class ProviderConfiguration {
     @Bean
     @ConditionalOnProperty(prefix = "knowledge-platform.llm", name = "provider",
             havingValue = "openai")
-    ChatLlm openAiChatSeam(org.springframework.ai.openai.OpenAiChatModel delegate) {
-        return new OpenAiChatLlm(delegate);
+    ChatLlm openAiChatSeam(OpenAiChatModel delegate) {
+        return new SpringAiChatLlm(delegate);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "knowledge-platform.llm", name = "provider",
+            havingValue = "ollama")
+    ChatLlm ollamaChatSeam(OllamaChatModel delegate) {
+        return new SpringAiChatLlm(delegate);
     }
 
     @Bean

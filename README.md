@@ -4,8 +4,8 @@ Knowledge Platform is organized as a monorepo with independently runnable servic
 A reviewer can start everything with a single `docker compose` command, open a
 browser, upload a document, and ask a natural-language question to get a streamed,
 source-attributed answer — fully offline, with stub LLM and stub embeddings (no
-API keys). A real Azure OpenAI provider can be dropped in by changing only
-configuration.
+API keys). Real providers (local Ollama or OpenAI) are switched on by
+configuration only — see [Providers](#providers-stub-ollama-openai-azure).
 
 Implemented services:
 
@@ -26,7 +26,7 @@ Implemented services:
 - Spring Boot 4.1, Java 25, Lombok
 - PostgreSQL (pgvector) + Liquibase (each service owns its schema)
 - Apache Kafka (transactional outbox → at-least-once)
-- Spring AI seams for embeddings + LLM (stub by default, Azure OpenAI placeholder)
+- Spring AI seams for embeddings + LLM (stub by default; Ollama, OpenAI; Azure OpenAI placeholder)
 - Local file storage shared between document- and indexing-service
 - Actuator health endpoints; demo-grade Spring Security (role-based)
 
@@ -45,9 +45,9 @@ flowchart LR
     K --> IS[indexing-service]
     VOL --> IS
     IS -->|chunks + embeddings| PG
-    RS -->|embed question| STUB[[EmbeddingModel stub/azure]]
+    RS -->|embed question| STUB[[EmbeddingModel stub/ollama/openai]]
     RS -->|cosine top-K read| PG
-    RS -->|stream answer| LLM[[ChatLlm stub/azure]]
+    RS -->|stream answer| LLM[[ChatLlm stub/ollama/openai]]
 ```
 
 ## Run the demo
@@ -68,7 +68,8 @@ Then:
    panel shows the retrieved **sources** (document id, chunk index, score, snippet)
    and the **timings** (embedding / retrieval / llm / total).
 
-All providers default to offline stubs, so no secrets are required.
+All providers default to offline stubs, so no secrets are required. To use a real
+model see [Providers](#providers-stub-ollama-openai-azure).
 
 Ports: UI `8088`, document-service `8080`, rag-service `8082`, PostgreSQL `5432`,
 Kafka `19092` (host).
@@ -89,11 +90,106 @@ conversation owner (there is no client-supplied `X-User-Id` header).
 - `/api/v1/rag/**` → authenticated (`ROLE_USER` or `ROLE_ADMIN`)
 - actuator health/info and the UI static assets → permit all
 
-### Swap in Azure OpenAI (no keys committed)
+## Providers (stub, Ollama, OpenAI, Azure)
 
-The embedding and LLM seams select a provider via a single property each, defaulting
-to `stub`. To use Azure OpenAI, set the provider to `azure` and supply endpoint/key
-via environment variables (empty by default — nothing is committed):
+Embeddings and the LLM are each selected by one property; no image rebuild is
+needed to switch.
+
+| Provider | indexing-service (embeddings) | rag-service (embeddings + chat) | Needs                    |
+|----------|-------------------------------|---------------------------------|--------------------------|
+| `stub`   | yes (default)                 | yes (default)                   | nothing — fully offline  |
+| `ollama` | yes                           | yes                             | local Ollama             |
+| `openai` | yes                           | yes                             | `OPENAI_API_KEY`         |
+| `azure`  | **no**                        | placeholder (fails on use)      | not implemented yet      |
+
+Properties: `knowledge-platform.embedding.provider` (both services) and
+`knowledge-platform.llm.provider` (rag-service). As env vars:
+
+| Setting            | indexing-service                         | rag-service          |
+|--------------------|------------------------------------------|----------------------|
+| embedding provider | `KNOWLEDGE_PLATFORM_EMBEDDING_PROVIDER`  | `EMBEDDING_PROVIDER` |
+| LLM provider       | —                                        | `LLM_PROVIDER`       |
+
+> **Embedding parity.** indexing-service and rag-service MUST use the same
+> embedding provider, model and dimensions (768), otherwise question vectors can't
+> be compared with stored chunk vectors and retrieval returns nonsense. After
+> switching the embedding provider, re-upload documents (or start clean with
+> `docker compose -f compose.full.yaml down -v`). The LLM provider can be changed
+> freely.
+
+### Ollama (local, no keys)
+
+Install [Ollama](https://ollama.com) and pull the models once:
+
+```bash
+ollama serve                     # if not already running; http://localhost:11434
+ollama pull nomic-embed-text     # 768-dim embedding model (both services)
+ollama pull llama3.2             # chat model (rag-service)
+```
+
+**Docker Compose** — add the `compose.ollama.yaml` overlay; the containers reach
+the host's Ollama via `host.docker.internal`:
+
+```bash
+docker compose -f compose.full.yaml -f compose.ollama.yaml up --build
+```
+
+Pick another chat model with e.g. `OLLAMA_CHAT_MODEL=gpt-oss:20b docker compose ...`.
+
+**Services individually** (see [Local development](#local-development)):
+
+```bash
+cd indexing-service
+SPRING_PROFILES_ACTIVE=dev KNOWLEDGE_PLATFORM_EMBEDDING_PROVIDER=ollama ../mvnw spring-boot:run
+
+cd rag-service
+EMBEDDING_PROVIDER=ollama LLM_PROVIDER=ollama ../mvnw spring-boot:run
+```
+
+Optional overrides: `OLLAMA_BASE_URL` (default `http://localhost:11434`),
+`OLLAMA_EMBEDDING_MODEL` (default `nomic-embed-text`), `OLLAMA_CHAT_MODEL`
+(rag-service, default `llama3.2`). Models are never auto-pulled.
+
+### OpenAI (platform.openai.com)
+
+The key is supplied only via the environment — never commit it.
+
+**Docker Compose:**
+
+```bash
+EMBEDDING_PROVIDER=openai \
+LLM_PROVIDER=openai \
+OPENAI_API_KEY=sk-... \
+docker compose -f compose.full.yaml up --build
+```
+
+`EMBEDDING_PROVIDER` is passed to both indexing- and rag-service, so parity is kept.
+
+**Services individually:**
+
+```bash
+export OPENAI_API_KEY=sk-...
+
+cd indexing-service
+SPRING_PROFILES_ACTIVE=dev KNOWLEDGE_PLATFORM_EMBEDDING_PROVIDER=openai ../mvnw spring-boot:run
+
+cd rag-service
+EMBEDDING_PROVIDER=openai LLM_PROVIDER=openai ../mvnw spring-boot:run
+# or: SPRING_PROFILES_ACTIVE=local ../mvnw spring-boot:run   (same, via application-local.properties)
+```
+
+Defaults: `OPENAI_EMBEDDING_MODEL=text-embedding-3-small` truncated to
+`OPENAI_EMBEDDING_DIMENSIONS=768` (Matryoshka) to match the pgvector column;
+`OPENAI_CHAT_MODEL=gpt-4o-mini`.
+
+### Azure OpenAI (placeholder — not functional yet)
+
+rag-service has `azure` beans wired to `AZURE_OPENAI_*` env vars, but they are
+inert placeholders: the app starts, and the first embedding/chat call fails with a
+clear "placeholder" error. indexing-service has no `azure` provider at all. To
+enable Azure, add the Spring AI Azure OpenAI starter to both services and replace
+the bodies of `AzureOpenAiEmbeddingModel` / `AzureOpenAiChatLlm`. Once that is
+done it would be started like this:
 
 ```bash
 EMBEDDING_PROVIDER=azure \
@@ -102,13 +198,10 @@ AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com \
 AZURE_OPENAI_API_KEY=<key> \
 AZURE_OPENAI_CHAT_DEPLOYMENT=<chat-deployment> \
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT=<embedding-deployment> \
-docker compose -f compose.full.yaml up
+docker compose -f compose.full.yaml up --build
 ```
 
-No image rebuild is needed — the Azure clients are already wired and gated by
-`knowledge-platform.{embedding,llm}.provider=azure`.
-
-### Service boundary trade-off (read-only chunk access)
+## Service boundary trade-off (read-only chunk access)
 
 `rag-service` reads the `indexing_service.document_chunks` table (owned by
 indexing-service) directly for vector retrieval. This is a deliberate, documented,
@@ -146,54 +239,35 @@ Start infrastructure from the monorepo root:
 docker compose -f compose.yaml up -d
 ```
 
-Run the Document Service from its own application directory:
+Run each service from its own application directory (separate terminals). The
+`dev` profile points document- and indexing-service at the infrastructure from
+`compose.yaml` (Kafka on `localhost:9092`):
 
 ```bash
 cd document-service
-../mvnw spring-boot:run
-```
+SPRING_PROFILES_ACTIVE=dev ../mvnw spring-boot:run    # :8080
 
-Run the Indexing Service from its own application directory:
-
-```bash
 cd indexing-service
-../mvnw spring-boot:run
+SPRING_PROFILES_ACTIVE=dev ../mvnw spring-boot:run    # consumes Kafka, no HTTP API
+
+cd rag-service
+../mvnw spring-boot:run                               # :8082 (no Kafka needed)
 ```
+
+Add the provider env vars from [Providers](#providers-stub-ollama-openai-azure)
+to run against Ollama or OpenAI instead of the stubs.
 
 ### Profiles
 
 - default: application runtime settings
-- `dev`: local Kafka bootstrap settings
+- `dev` (document-, indexing-service): local PostgreSQL + Kafka from `compose.yaml`
+- `local` (rag-service): OpenAI for both embeddings and chat (key via `OPENAI_API_KEY`)
 
-### Embeddings (indexing-service)
+### Embedding dimensions
 
-The indexing service stores chunk embeddings in a pgvector column. The provider
-is selected with `knowledge-platform.embedding.provider`:
-
-- `stub` (default): deterministic, offline vectors — no external service or API keys.
-- `ollama`: real embeddings via a local [Ollama](https://ollama.com) instance using Spring AI.
-- `openai`: OpenAI embeddings (e.g. `text-embedding-3-small`) via Spring AI; cheap and RAG-ready.
-
-To use Ollama locally:
-
-```bash
-ollama serve                     # starts Ollama at http://localhost:11434
-ollama pull nomic-embed-text     # 768-dim embedding model
-cd indexing-service
-KNOWLEDGE_PLATFORM_EMBEDDING_PROVIDER=ollama ../mvnw spring-boot:run
-```
-
-To use OpenAI (no secrets are committed; supply the key via env):
-
-```bash
-cd indexing-service
-KNOWLEDGE_PLATFORM_EMBEDDING_PROVIDER=openai OPENAI_API_KEY=sk-... ../mvnw spring-boot:run
-```
-
-`text-embedding-3-small` is truncated to 768 dims (Matryoshka) to match the column.
-
-`knowledge-platform.embedding.dimensions` (768) must match both the selected
-model and the `document_chunks.embedding` pgvector column.
+`knowledge-platform.embedding.dimensions` (768) must match the selected model and
+the `document_chunks.embedding` pgvector column in both services
+(`nomic-embed-text` is natively 768; `text-embedding-3-small` is truncated to 768).
 
 ## API example
 
@@ -268,7 +342,8 @@ Tests use Testcontainers for PostgreSQL (pgvector) and Kafka. Notable coverage:
 
 - Demo-grade security only: in-memory users, HTTP Basic, visible demo passwords —
   not production auth (no OAuth2/OIDC, user store, or password hashing at scale)
-- Providers default to offline stubs; Azure OpenAI is wired but off by default
+- Providers default to offline stubs; Ollama and OpenAI are opt-in; Azure OpenAI
+  is a non-functional placeholder
 - Outbox polling is intentionally simple and single-worker friendly
 - No S3 storage, API gateway, hybrid/full-text search, or Kubernetes in this phase
 - Consumers must tolerate duplicate events (at-least-once delivery)
