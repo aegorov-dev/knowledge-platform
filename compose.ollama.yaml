@@ -1,0 +1,27 @@
+# Overlay for compose.full.yaml: run indexing-service + rag-service against a
+# local Ollama on the host instead of the offline stubs.
+#
+#   ollama pull nomic-embed-text && ollama pull llama3.2   # once
+#   docker compose -f compose.full.yaml -f compose.ollama.yaml up --build
+#
+# Both services MUST use the same embedding model (nomic-embed-text, 768 dims) or
+# retrieval breaks. Documents indexed earlier with the stub provider won't match
+# Ollama query embeddings — re-upload them or start clean with `down -v`.
+services:
+  indexing-service:
+    environment:
+      - 'KNOWLEDGE_PLATFORM_EMBEDDING_PROVIDER=ollama'
+      - 'OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}'
+      - 'OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+  rag-service:
+    environment:
+      - 'EMBEDDING_PROVIDER=ollama'
+      - 'LLM_PROVIDER=ollama'
+      - 'OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}'
+      - 'OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}'
+      - 'OLLAMA_CHAT_MODEL=${OLLAMA_CHAT_MODEL:-llama3.2}'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
