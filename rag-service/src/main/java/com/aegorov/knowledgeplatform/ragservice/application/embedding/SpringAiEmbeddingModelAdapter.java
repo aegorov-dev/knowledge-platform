@@ -2,7 +2,7 @@ package com.aegorov.knowledgeplatform.ragservice.application.embedding;
 
 /**
  * Adapts a Spring AI {@link org.springframework.ai.embedding.EmbeddingModel}
- * (e.g. OpenAI on platform.openai.com) to the local {@link EmbeddingModel} seam,
+ * (e.g. OpenAI on platform.openai.com, Ollama) to the local {@link EmbeddingModel} seam,
  * keeping the RAG pipeline provider-agnostic.
  * <p>
  * Parity requirement: when this provider is active, indexing-service MUST embed
@@ -12,9 +12,9 @@ package com.aegorov.knowledgeplatform.ragservice.application.embedding;
  */
 public class SpringAiEmbeddingModelAdapter implements EmbeddingModel {
 
-    private final EmbeddingModel delegate;
+    private final org.springframework.ai.embedding.EmbeddingModel delegate;
 
-    public SpringAiEmbeddingModelAdapter(EmbeddingModel delegate) {
+    public SpringAiEmbeddingModelAdapter(org.springframework.ai.embedding.EmbeddingModel delegate) {
         this.delegate = delegate;
     }
 
