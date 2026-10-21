@@ -157,10 +157,7 @@ The key is supplied only via the environment — never commit it.
 **Docker Compose:**
 
 ```bash
-EMBEDDING_PROVIDER=openai \
-LLM_PROVIDER=openai \
-OPENAI_API_KEY=sk-... \
-docker compose -f compose.full.yaml up --build
+docker compose -f compose.full.yaml -f compose.openai.yaml up --build
 ```
 
 `EMBEDDING_PROVIDER` is passed to both indexing- and rag-service, so parity is kept.

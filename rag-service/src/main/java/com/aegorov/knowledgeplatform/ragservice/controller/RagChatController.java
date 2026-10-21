@@ -4,6 +4,7 @@ import java.security.Principal;
 import java.util.List;
 import java.util.UUID;
 
+import com.openai.errors.UnauthorizedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -85,6 +86,12 @@ public class RagChatController {
     @ExceptionHandler(ConversationAccessDeniedException.class)
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public String forbidden(RuntimeException ex) {
+        return ex.getMessage();
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public String openAiUnauthorized(RuntimeException ex) {
         return ex.getMessage();
     }
 
